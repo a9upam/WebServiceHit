@@ -13,13 +13,105 @@ import CoreData
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
-
+    var reachability : Reachability?
+    let hostNames = [nil, "google.com", "invalidhost"]
+    var hostIndex = 0
+    var networkStatus : UILabel!
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplicationLaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        networkStatus = UILabel(frame: CGRect(x: 0, y: 0, width: (window?.frame.size.width)!, height: 50))
+        window?.addSubview(networkStatus)
+        startHost(at: 0)
+        let userListViewController = UserListViewController(nibName: "UserListViewController", bundle: nil)
+        let navController = UINavigationController(rootViewController: userListViewController)
+        navController.setNavigationBarHidden(true, animated: true)
+        self.window?.rootViewController = navController
         return true
     }
 
+    func startHost(at index: Int) {
+        stopNotifier()
+        setupReachability(hostNames[index], useClosures: true)
+        startNotifier()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            self.startHost(at: (index + 1) % 3)
+        }
+    }
+    func setupReachability(_ hostName: String?, useClosures: Bool) {
+        let reachability: Reachability?
+        if let hostName = hostName {
+            reachability = Reachability(hostname: hostName)
+//            hostNameLabel?.text = hostName
+        } else {
+            reachability = Reachability()
+//            hostNameLabel.text = "No host name"
+        }
+        self.reachability = reachability
+//        print("--- set up with host name: \(hostNameLabel.text!)")
+        
+        if useClosures {
+            reachability?.whenReachable = { reachability in
+                self.updateLabelColourWhenReachable(reachability)
+            }
+            reachability?.whenUnreachable = { reachability in
+                self.updateLabelColourWhenNotReachable(reachability)
+            }
+        } else {
+            NotificationCenter.default.addObserver(self, selector: #selector(reachabilityChanged(_:)), name: .reachabilityChanged, object: reachability)
+        }
+    }
+    
+    func startNotifier() {
+        print("--- start notifier")
+        do {
+            try reachability?.startNotifier()
+        } catch {
+            networkStatus.textColor = .red
+            networkStatus.text = "Unable to start\nnotifier"
+            return
+        }
+    }
+    
+    func stopNotifier() {
+        print("--- stop notifier")
+        reachability?.stopNotifier()
+        NotificationCenter.default.removeObserver(self, name: .reachabilityChanged, object: nil)
+        reachability = nil
+    }
+    
+    func updateLabelColourWhenReachable(_ reachability: Reachability) {
+        print("\(reachability.description) - \(reachability.connection)")
+        if reachability.connection == .wifi {
+            self.networkStatus.textColor = .green
+        } else {
+            self.networkStatus.textColor = .blue
+        }
+        
+        self.networkStatus.text = "\(reachability.connection)"
+    }
+    
+    func updateLabelColourWhenNotReachable(_ reachability: Reachability) {
+        print("\(reachability.description) - \(reachability.connection)")
+        
+        self.networkStatus.textColor = .red
+        
+        self.networkStatus.text = "\(reachability.connection)"
+    }
+    
+    
+    @objc func reachabilityChanged(_ note: Notification) {
+        let reachability = note.object as! Reachability
+        
+        if reachability.connection != .none {
+            updateLabelColourWhenReachable(reachability)
+        } else {
+            updateLabelColourWhenNotReachable(reachability)
+        }
+    }
+    
+    deinit {
+        stopNotifier()
+    }
     func applicationWillResignActive(_ application: UIApplication) {
         // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
         // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
